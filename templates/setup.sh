@@ -11,7 +11,19 @@ NODE_VERSION="{{NODE_VERSION}}"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[setup]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[warn]${NC}  $*"; }
+skip()    { echo -e "${YELLOW}[skip]${NC}  $*"; }
 die()     { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
+
+# ── Flags ─────────────────────────────────────────────────────────────────────
+SKIP_INSTALL=false
+
+for arg in "$@"; do
+  case $arg in
+    --skip-install) SKIP_INSTALL=true ;;
+    *) die "Unknown argument: $arg. Usage: bash setup.sh [--skip-install]" ;;
+  esac
+done
+# ─────────────────────────────────────────────────────────────────────────────
 
 require_root() {
   [[ $EUID -eq 0 ]] || die "Run this script as root: sudo bash setup.sh"
@@ -34,27 +46,36 @@ install_dependencies() {
   apt-get update -qq
 
   info "Installing base dependencies…"
+  # apt-get skips packages that are already up-to-date, so this is always safe
   apt-get install -y -qq \
     curl git ufw nginx certbot python3-certbot-nginx \
     build-essential
 }
 
 install_nvm_node() {
-  info "Installing NVM…"
-  # Install for root; runs non-interactively
   export NVM_DIR="/root/.nvm"
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 
-  # Load NVM in this shell session
-  # shellcheck source=/dev/null
-  . "$NVM_DIR/nvm.sh"
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    skip "NVM already installed — loading existing installation"
+    . "$NVM_DIR/nvm.sh"
+  else
+    info "Installing NVM…"
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    # shellcheck source=/dev/null
+    . "$NVM_DIR/nvm.sh"
+  fi
 
-  info "Installing Node.js $NODE_VERSION via NVM…"
-  nvm install "$NODE_VERSION"
-  nvm alias default "$NODE_VERSION"
-  nvm use default
+  if nvm ls "$NODE_VERSION" &>/dev/null; then
+    skip "Node.js $NODE_VERSION already installed via NVM"
+    nvm use "$NODE_VERSION"
+  else
+    info "Installing Node.js $NODE_VERSION via NVM…"
+    nvm install "$NODE_VERSION"
+    nvm alias default "$NODE_VERSION"
+    nvm use default
+  fi
 
-  # Make node/npm available system-wide via symlinks
+  # Refresh system-wide symlinks regardless (safe to re-run)
   NODE_BIN_DIR="$(nvm which default | xargs dirname)"
   ln -sf "$NODE_BIN_DIR/node" /usr/local/bin/node
   ln -sf "$NODE_BIN_DIR/npm"  /usr/local/bin/npm
@@ -64,6 +85,11 @@ install_nvm_node() {
 }
 
 install_pm2() {
+  if command -v pm2 &>/dev/null; then
+    skip "PM2 already installed ($(pm2 -v)) — skipping"
+    return
+  fi
+
   info "Installing PM2 globally…"
   npm install -g pm2 --quiet
   pm2 startup systemd -u root --hp /root | tail -1 | bash || true
@@ -71,12 +97,20 @@ install_pm2() {
 }
 
 configure_firewall() {
+  if ufw status | grep -q "Status: active"; then
+    skip "UFW already active — ensuring Nginx Full is allowed…"
+    ufw allow ssh
+    ufw allow 'Nginx Full'
+    info "Firewall rules verified"
+    return
+  fi
+
   info "Configuring UFW firewall…"
   ufw --force reset
   ufw default deny incoming
   ufw default allow outgoing
   ufw allow ssh
-  ufw allow 'Nginx Full'   # ports 80 + 443
+  ufw allow 'Nginx Full'
   ufw --force enable
   info "Firewall active — SSH, HTTP, HTTPS allowed"
 }
@@ -152,10 +186,19 @@ print_next_steps() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 require_root
 detect_ubuntu
-install_dependencies
-install_nvm_node
-install_pm2
-configure_firewall
+
+if [[ "$SKIP_INSTALL" == true ]]; then
+  echo ""
+  warn "--skip-install set: skipping Node, PM2, and firewall setup"
+  warn "Assuming they are already configured on this VPS"
+  echo ""
+else
+  install_dependencies
+  install_nvm_node
+  install_pm2
+  configure_firewall
+fi
+
 configure_nginx
 obtain_ssl
 print_next_steps

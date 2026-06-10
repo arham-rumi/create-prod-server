@@ -66,9 +66,36 @@ Tested on **Ubuntu 22.04 LTS** and **Ubuntu 24.04 LTS**.
 
 ---
 
+## Multiple environments or projects on one VPS
+
+Run `npx create-prod-server` once per domain. Each run produces its own folder with a unique domain and port.
+
+| Environment | Domain | Port |
+|---|---|---|
+| Production | `myapp.com` | `3000` |
+| Staging | `staging.myapp.com` | `3001` |
+| Dev | `dev.myapp.com` | `3002` |
+| Other project | `otherproject.com` | `4000` |
+
+**First environment** — run `setup.sh` normally. It installs Node, PM2, Nginx, and the firewall:
+
+```bash
+bash setup.sh
+```
+
+**Every environment after that** — use `--skip-install`. Node, PM2, and the firewall are already on the server. This only wires up the new Nginx config and gets the SSL cert:
+
+```bash
+bash setup.sh --skip-install
+```
+
+The script is also safe to re-run. If Node, PM2, or the firewall are already configured it detects them and skips instead of reinstalling.
+
+---
+
 ## Requirements
 
-- A fresh Ubuntu 22.04 or 24.04 VPS
+- Ubuntu 22.04 or 24.04 VPS
 - A domain pointed at your server's IP (A record for `@` and `www`)
 - Root access
 
