@@ -94,7 +94,12 @@ async function main() {
     console.log(chalk.green("  ✔"), chalk.white(output));
   }
 
-  fs.chmodSync(path.join(outputDir, "setup.sh"), 0o755);
+  // chmod is a no-op on Windows but doesn't error; Linux/mac VPS users benefit
+  try {
+    fs.chmodSync(path.join(outputDir, "setup.sh"), 0o755);
+  } catch {
+    /* ignore on Windows */
+  }
 
   console.log();
   console.log(

@@ -82,23 +82,16 @@ configure_firewall() {
 }
 
 configure_nginx() {
-  local NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
-  local NGINX_ENABLED="/etc/nginx/sites-enabled/$DOMAIN"
-
-  info "Installing Nginx config for $DOMAIN…"
-
-  # Expect nginx.conf in the same directory as this script
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   if [[ ! -f "$SCRIPT_DIR/nginx.conf" ]]; then
     die "nginx.conf not found next to setup.sh at $SCRIPT_DIR"
   fi
 
-  cp "$SCRIPT_DIR/nginx.conf" "$NGINX_CONF"
+  info "Setting up temporary HTTP config so Certbot can complete its ACME challenge…"
 
-  # Temporarily serve HTTP only so Certbot can do its ACME challenge
-  # (The full SSL config is already in nginx.conf; we do a plain HTTP stub first)
-  cat > /etc/nginx/sites-available/${DOMAIN}-http-only <<EOF
+  # Step 1: plain HTTP-only config — Certbot needs port 80 to verify the domain
+  cat > /etc/nginx/sites-available/$DOMAIN <<EOF
 server {
     listen 80;
     server_name ${DOMAIN} www.${DOMAIN};
@@ -106,27 +99,32 @@ server {
 }
 EOF
 
-  ln -sf /etc/nginx/sites-available/${DOMAIN}-http-only /etc/nginx/sites-enabled/${DOMAIN}-http-only
+  ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
   rm -f /etc/nginx/sites-enabled/default
 
   nginx -t && systemctl reload nginx
-  info "Nginx running (HTTP-only stub for Certbot)"
+  info "Nginx running on HTTP — ready for Certbot"
 }
 
 obtain_ssl() {
   info "Obtaining SSL certificate via Certbot…"
-  certbot --nginx \
+
+  # certbot --nginx edits whatever config is active for the domain.
+  # We give it the plain HTTP config; it adds SSL directives there.
+  # Afterwards we replace the whole file with our clean nginx.conf
+  # (which has proper SSL, security headers, and gzip already set up).
+  certbot certonly \
+    --nginx \
     -d "$DOMAIN" \
     -d "www.$DOMAIN" \
     --non-interactive \
     --agree-tos \
-    --register-unsafely-without-email \
-    --redirect
+    --register-unsafely-without-email
 
-  # Now switch to the full Nginx config with SSL
-  local NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
-  ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$DOMAIN"
-  rm -f /etc/nginx/sites-enabled/${DOMAIN}-http-only
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Replace the Certbot-modified stub with our production-grade config
+  cp "$SCRIPT_DIR/nginx.conf" /etc/nginx/sites-available/$DOMAIN
 
   nginx -t && systemctl reload nginx
   info "SSL certificate installed. HTTPS active."
