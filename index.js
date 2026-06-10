@@ -108,17 +108,17 @@ async function main() {
   );
   console.log();
   console.log(chalk.gray("  Next steps:"));
-  console.log(chalk.gray("  1. Copy the folder to your VPS"));
-  console.log(chalk.gray(`  2. Run: bash setup.sh`));
   console.log(
     chalk.gray(
-      `  3. Copy nginx.conf to /etc/nginx/sites-available/${vars.DOMAIN}`,
+      `  1. scp -r ./${vars.APP_NAME}-server-config/ root@your-vps-ip:~/`,
     ),
   );
+  console.log(chalk.gray(`  2. ssh root@your-vps-ip`));
   console.log(
-    chalk.gray(
-      "  4. Copy ecosystem.config.js to your app root and run: pm2 start ecosystem.config.js",
-    ),
+    chalk.gray(`  3. cd ${vars.APP_NAME}-server-config && bash setup.sh`),
+  );
+  console.log(
+    chalk.gray(`  4. Upload your app and run: pm2 start ecosystem.config.js`),
   );
   console.log();
 }

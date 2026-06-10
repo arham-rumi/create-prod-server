@@ -45,18 +45,23 @@ Output lands in `./<app-name>-server-config/`.
 
 ## Deploying to your VPS
 
+`npx create-prod-server` runs **locally** and writes the config files to your machine. You then copy the whole folder to your VPS and run `setup.sh` there.
+
+`setup.sh` does not download your config from anywhere — it reads `nginx.conf` directly from the same folder it lives in. That's why you copy the entire folder, not just the script.
+
 ```bash
-# 1. Copy the generated folder to your server
+# 1. Copy the entire generated folder to your VPS
+#    (setup.sh reads nginx.conf from the same directory)
 scp -r my-app-server-config/ root@your-server-ip:~/
 
-# 2. SSH in
+# 2. SSH into your VPS
 ssh root@your-server-ip
 
-# 3. Run setup (installs everything and obtains SSL)
+# 3. Run setup as root — installs Node, PM2, Nginx, firewall, and SSL
 cd my-app-server-config
 bash setup.sh
 
-# 4. Upload your app, then start it
+# 4. Upload your app, then start it with PM2
 cd /var/www/my-app
 pm2 start ecosystem.config.js
 pm2 save

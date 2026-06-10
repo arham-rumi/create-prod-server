@@ -49,7 +49,7 @@ install_dependencies() {
   # apt-get skips packages that are already up-to-date, so this is always safe
   apt-get install -y -qq \
     curl git ufw nginx certbot python3-certbot-nginx \
-    build-essential
+    build-essential dnsutils
 }
 
 install_nvm_node() {
@@ -141,12 +141,32 @@ EOF
 }
 
 obtain_ssl() {
+  info "Checking DNS — verifying $DOMAIN resolves to this server…"
+
+  # Ensure dig is available even when --skip-install was used
+  command -v dig &>/dev/null || apt-get install -y -qq dnsutils
+
+  SERVER_IP="$(curl -fsSL https://api.ipify.org 2>/dev/null || true)"
+  DOMAIN_IP="$(dig +short "$DOMAIN" | tail -1)"
+
+  if [[ -z "$DOMAIN_IP" ]]; then
+    die "DNS lookup for $DOMAIN returned nothing. Make sure your A record points to this server and has propagated, then re-run."
+  fi
+
+  if [[ -n "$SERVER_IP" && "$DOMAIN_IP" != "$SERVER_IP" ]]; then
+    warn "DNS mismatch: $DOMAIN resolves to $DOMAIN_IP but this server's IP is $SERVER_IP"
+    warn "Certbot will likely fail. Make sure your A record is correct and DNS has propagated."
+    warn "Proceeding anyway — press Ctrl+C to abort."
+    sleep 5
+  else
+    info "DNS OK — $DOMAIN → $DOMAIN_IP"
+  fi
+
   info "Obtaining SSL certificate via Certbot…"
 
-  # certbot --nginx edits whatever config is active for the domain.
-  # We give it the plain HTTP config; it adds SSL directives there.
-  # Afterwards we replace the whole file with our clean nginx.conf
-  # (which has proper SSL, security headers, and gzip already set up).
+  # certonly = get the cert only, do not let Certbot rewrite our nginx config.
+  # --nginx  = use the Nginx plugin for the ACME HTTP-01 challenge (port 80).
+  # Afterwards we copy our clean production nginx.conf into place ourselves.
   certbot certonly \
     --nginx \
     -d "$DOMAIN" \
@@ -157,7 +177,6 @@ obtain_ssl() {
 
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-  # Replace the Certbot-modified stub with our production-grade config
   cp "$SCRIPT_DIR/nginx.conf" /etc/nginx/sites-available/$DOMAIN
 
   nginx -t && systemctl reload nginx
