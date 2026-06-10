@@ -1,0 +1,30 @@
+{
+  "name": "create-prod-server",
+  "version": "1.0.0",
+  "description": "Scaffold a production-ready server config from your terminal — Nginx, PM2, SSL, and firewall in one command.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "create-prod-server": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "nginx",
+    "pm2",
+    "ssl",
+    "certbot",
+    "vps",
+    "production",
+    "server",
+    "devops",
+    "cli"
+  ],
+  "author": "Arham Rumi",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "inquirer": "^9.2.12"
+  }
+}
